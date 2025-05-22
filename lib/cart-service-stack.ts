@@ -5,6 +5,7 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import { aws_apigateway as apigateway } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import path = require('path');
 
 export class CartServiceStack extends cdk.Stack {
@@ -64,7 +65,7 @@ export class CartServiceStack extends cdk.Stack {
 
     const lambdaFunction = new lambdaNodejs.NodejsFunction(this, 'LambdaFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      entry: path.join(__dirname, '../../nodejs-aws-cart-api/src/lambda.ts'),
+      entry: path.join(__dirname, '../../nodejs-aws-cart-api/src/main.ts'),
       handler: 'handler',
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -72,8 +73,10 @@ export class CartServiceStack extends cdk.Stack {
       environment: {
         DB_HOST: dbInstance.dbInstanceEndpointAddress,
         DB_NAME: 'cartdb',
+        DB_USER: 'postgres',
         DB_SECRET_ARN: dbCredentials.secretArn,
       },
+      timeout: cdk.Duration.seconds(30),
       bundling: {
         forceDockerBundling: false,
         externalModules: [
@@ -93,9 +96,10 @@ export class CartServiceStack extends cdk.Stack {
       description: 'This service serves a Nest.js application.',
     });
 
-    const lambdaIntegration = new apigateway.LambdaIntegration(lambdaFunction);
+    const lambdaIntegration = new apigateway.LambdaIntegration(lambdaFunction, {
+      proxy: true,
+    });
 
-    api.root.addMethod('ANY', lambdaIntegration);
     api.root.addProxy({
       defaultIntegration: lambdaIntegration,
       anyMethod: true,
